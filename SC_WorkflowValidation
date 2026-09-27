@@ -1,0 +1,141 @@
+public class SC_WorkflowValidation
+{
+    private static container getApprovalCounts( WorkflowCorrelationId _correlationId)
+    {
+        WorkflowWorkItemTable workItem;
+        int                     totalApprovals;
+        int                     completedApprovals;
+
+        if (!_correlationId)
+        {
+            return [0, 0];
+        }
+
+        while select workItem
+            where workItem.CorrelationId == _correlationId
+        {
+            totalApprovals++;
+
+            if (workItem.Status == WorkflowWorkItemStatus::Completed)
+            {
+                completedApprovals++;
+            }
+        }
+
+        return [totalApprovals, completedApprovals];
+    }
+
+    private static WorkflowCorrelationId getActiveCorrelationId( RecId _contextRecId)
+    {
+        WorkflowTrackingStatusTable trackingStatus;
+
+        if (!_contextRecId)
+        {
+            return emptyGuid();
+        }
+
+        select firstOnly trackingStatus
+            order by CreatedDateTime desc
+            where trackingStatus.ContextTableId == tableNum(SC_ExpectedReleasedProduct)
+                && trackingStatus.ContextRecId == _contextRecId
+                && trackingStatus.TrackingStatus != WorkflowTrackingStatus::Completed
+                && trackingStatus.TrackingStatus != WorkflowTrackingStatus::Cancelled;
+
+        if (trackingStatus)
+        {
+            return trackingStatus.CorrelationId;
+        }
+
+        select firstOnly trackingStatus
+            order by CreatedDateTime desc
+            where trackingStatus.ContextTableId == tableNum(SC_ExpectedReleasedProduct)
+                && trackingStatus.ContextRecId == _contextRecId;
+        
+        return trackingStatus.CorrelationId;
+    }
+
+    private static boolean hasPendingApprovalWorkItem(WorkflowCorrelationId _correlationId)
+    {
+        WorkflowWorkItemTable workItem;
+
+        if (!_correlationId)
+        {
+            return false;
+        }
+
+        select firstOnly RecId from workItem
+            where workItem.CorrelationId == _correlationId
+                && workItem.Status == WorkflowWorkItemStatus::Pending;
+
+        return workItem.RecId != 0;
+    }
+
+    public static boolean isFinalApprovalForWorkItem( WorkflowWorkItemTable _workItem)
+    {
+        int totalApprovals;
+        int completedApprovals;
+
+        [totalApprovals, completedApprovals] =
+            SC_WorkflowValidation::getApprovalCounts(_workItem.CorrelationId);
+
+        return totalApprovals > 0
+            && (completedApprovals + 1) >= totalApprovals;
+    }
+
+    /// <summary>
+    /// True when the active workflow instance is at the final approval step.
+    /// Uses the same approval-count logic as <c>validateFinalApproval</c>.
+    /// </summary>
+    public static boolean isAtFinalApprovalStage( SC_ExpectedReleasedProduct _expectedProduct)
+    {
+        WorkflowCorrelationId correlationId;
+        int                   totalApprovals;
+        int                   completedApprovals;
+        
+        if (!_expectedProduct.RecId)
+        {
+            return false;
+        }
+
+        if (_expectedProduct.WorkflowState != SC_WorkflowStatus::InReview
+            && _expectedProduct.WorkflowState != SC_WorkflowStatus::Submitted)
+        {
+            return false;
+        }
+
+        correlationId = SC_WorkflowValidation::getActiveCorrelationId(_expectedProduct.RecId);
+
+        [totalApprovals, completedApprovals] =
+            SC_WorkflowValidation::getApprovalCounts(correlationId);
+
+        return totalApprovals > 0
+            && (completedApprovals + 1) >= totalApprovals
+            && SC_WorkflowValidation::hasPendingApprovalWorkItem(correlationId);
+    }
+
+    public static void validateFinalApproval( WorkflowWorkItemTable _workItem)
+    {
+        SC_ExpectedReleasedProduct expectedProduct;
+        expectedProduct = SC_ExpectedReleasedProduct::find(_workItem.RefRecId, true);
+
+        if (!expectedProduct)
+        {
+            return;
+        }
+
+        // Current approval is the final approval
+        if (SC_WorkflowValidation::isFinalApprovalForWorkItem(_workItem))
+        {
+            if (!expectedProduct.ItemId)
+            {
+                ttsbegin;
+                expectedProduct.WorkflowState = SC_WorkflowStatus::InReview;
+                expectedProduct.update();
+                ttscommit;
+                throw warning(
+                    "Please assign the item number before final approval.");
+            }
+        }
+    }
+
+}
