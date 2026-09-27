@@ -1,0 +1,115 @@
+/// <summary>
+/// The SC_NewProductWFApprovalEventHandler workflow outcome event handler.
+/// </summary>
+public final class SC_NewProductWFApprovalEventHandler implements WorkflowElementCanceledEventHandler,
+	WorkflowElemChangeRequestedEventHandler,
+	WorkflowElementCompletedEventHandler,
+	WorkflowElementReturnedEventHandler,
+	WorkflowElementStartedEventHandler,
+	WorkflowElementDeniedEventHandler,
+	WorkflowWorkItemsCreatedEventHandler
+{
+    public void started(WorkflowElementEventArgs _workflowElementEventArgs)
+	{
+		// TODO:  Write code to execute once the workflow is started.
+	}
+
+    public void canceled(WorkflowElementEventArgs _workflowElementEventArgs)
+	{
+		// TODO:  Write code to execute once the workflow is canceled.
+        SC_ExpectedReleasedProduct::updateWorkflowStatus(_workflowElementEventArgs.parmWorkflowContext().parmRecId(), SC_WorkflowStatus::Rejected);
+
+	}
+
+    //   public void completed(WorkflowElementEventArgs _workflowElementEventArgs)
+ //{
+ //	// TODO:  Write code to execute once the workflow is completed.
+ //       SC_ExpectedReleasedProduct::updateWorkflowStatus(_workflowElementEventArgs.parmWorkflowContext().parmRecId(), SC_WorkflowStatus::Rejected);
+
+ //}
+    public void completed(WorkflowElementEventArgs _workflowElementEventArgs)
+    {
+        WorkflowContext                 workflowContext;
+        WorkflowTrackingStatusTable     trackingStatus;
+        WorkflowWorkItemTable           workItem;
+
+        SC_ExpectedReleasedProduct      expectedProduct;
+
+        WorkflowCorrelationId           correlationId;
+
+        int totalApprovals;
+        int completedApprovals;
+
+        workflowContext = _workflowElementEventArgs.parmWorkflowContext();
+
+        expectedProduct = SC_ExpectedReleasedProduct::find(
+            workflowContext.parmRecId());
+
+        if (!expectedProduct)
+        {
+            return;
+        }
+
+        // Get workflow correlationId
+        select firstOnly trackingStatus
+            where trackingStatus.ContextRecId == workflowContext.parmRecId();
+
+        correlationId = trackingStatus.CorrelationId;
+
+        // Count all approval work items
+        while select workItem
+            where workItem.CorrelationId == correlationId
+        {
+            totalApprovals++;
+
+            if (workItem.Status == WorkflowWorkItemStatus::Completed)
+            {
+                completedApprovals++;
+            }
+        }
+
+        // Current approval is the LAST approval
+        // because current completed event fires BEFORE current item becomes completed in DB
+        if ((completedApprovals + 1) >= totalApprovals)
+        {
+            // Validate ItemId before final approval
+            if (!expectedProduct.ItemId)
+            {
+                throw warning("Please assign the item number before final approval.");
+            }
+
+            // Final approval successful
+            SC_ExpectedReleasedProduct::updateWorkflowStatus(
+                workflowContext.parmRecId(),
+                SC_WorkflowStatus::Approved);
+        }
+        else
+        {
+            // Still under approval chain
+            SC_ExpectedReleasedProduct::updateWorkflowStatus(
+                workflowContext.parmRecId(),
+                SC_WorkflowStatus::InReview);
+        }
+    }
+
+    public void denied(WorkflowElementEventArgs _workflowElementEventArgs)
+	{
+		// TODO:  Write code to execute once the workflow is denied.
+	}
+
+    public void changeRequested(WorkflowElementEventArgs _workflowElementEventArgs)
+	{
+		// TODO:  Write code to execute once change is requested for the workflow.
+	}
+
+    public void returned(WorkflowElementEventArgs _workflowElementEventArgs)
+	{
+		// TODO:  Write code to execute once the workflow is returned.
+	}
+
+    public void created(WorkflowWorkItemsEventArgs _workflowWorkItemsEventArgs)
+	{
+		// TODO:  Write code to execute once work items are created.
+	}
+
+}
