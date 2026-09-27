@@ -1,0 +1,30 @@
+/// <summary>
+/// The SC_NewProductWFTypeEventHandler workflow event handler.
+/// </summary>
+public class  SC_NewProductWFTypeEventHandler implements WorkflowCanceledEventHandler,  
+	WorkflowCompletedEventHandler,
+	WorkflowStartedEventHandler
+{
+    public void started(WorkflowEventArgs _workflowEventArgs)
+	{
+		// TODO:  Write code to execute once the workflow is started.
+        SC_ExpectedReleasedProduct::updateWorkflowStatus(_workflowEventArgs.parmWorkflowContext().parmRecId(),SC_WorkflowStatus::InReview);
+
+	}
+
+    public void canceled(WorkflowEventArgs _workflowEventArgs)
+	{
+		// TODO:  Write code to execute once the workflow is canceled.
+        SC_ExpectedReleasedProduct::updateWorkflowStatus(_workflowEventArgs.parmWorkflowContext().parmRecId(),SC_WorkflowStatus::Rejected);
+
+	}
+
+    public void completed(WorkflowEventArgs _workflowEventArgs)
+	{
+		// TODO:  Write code to execute once the workflow is completed.
+        
+		SC_ExpectedReleasedProduct::updateWorkflowStatus(_workflowEventArgs.parmWorkflowContext().parmRecId(), SC_WorkflowStatus::Approved);
+
+	}
+
+}
