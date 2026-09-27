@@ -1,0 +1,150 @@
+[Form]
+public class SC_ExpectedReleasedProductCreate extends FormRun
+{
+    boolean closedOK;
+
+    public void init()
+    {
+        this.args().record(null);
+
+        closedOK = false;
+
+        super();
+
+        SC_ExpectedReleasedProduct_DS.create();
+        this.updateProductSubtypeControls();
+    }
+
+    /// <summary>
+    /// Shows product master fields when subtype is Product master (same as EcoResProductCreate).
+    /// </summary>
+    public void updateProductSubtypeControls()
+    {
+        boolean isProductMaster;
+
+        isProductMaster = SC_ExpectedReleasedProduct.ProductSubtype == EcoResProductSubtype::ProductMaster;
+
+        SC_ExpectedReleasedProduct_ProductDimensionGroup.visible(isProductMaster);
+        SC_ExpectedReleasedProduct_ProductDimensionGroup.mandatory(isProductMaster);
+        SC_ExpectedReleasedProduct_VariantConfigurationTechnology.visible(isProductMaster);
+    }
+
+    /// <summary>
+    /// Defaults reference groups from category (same pattern as EcoResProductCreate.setCategory).
+    /// </summary>
+    public void setCategory(EcoResCategory _category)
+    {
+        SC_ExpectedReleasedProduct rec;
+
+        rec = SC_ExpectedReleasedProduct_DS.cursor(true);
+
+        SC_ExpectedReleasedProductCategoryDefault::applyCategoryDefaults(rec, _category.RecId);
+
+        SC_ExpectedReleasedProduct_DS.refresh();
+    }
+
+    public boolean validateWrite()
+    {
+        return SC_ExpectedReleasedProduct_DS.cursor().validateWrite();
+    }
+
+    public boolean write()
+    {
+        SC_ExpectedReleasedProduct rec = SC_ExpectedReleasedProduct_DS.cursor();
+
+        if (rec.RecId)
+        {
+            return true;
+        }
+
+        try
+        {
+            ttsbegin;
+            rec.insert();
+            ttscommit;
+        }
+        catch (Exception::Error)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private void postWrite()
+    {
+        this.updateCallers();
+    }
+
+    public void updateCallers()
+    {
+        FormRun                      callerForm;
+        FormDataSource               callerDataSource;
+        SC_ExpectedReleasedProduct   rec;
+
+        callerForm = element.args().caller() as FormRun;
+
+        if (!callerForm)
+        {
+            return;
+        }
+
+        rec = SC_ExpectedReleasedProduct_DS.cursor();
+
+        if (!rec.RecId)
+        {
+            return;
+        }
+
+        callerForm.args().lookupRecord(rec);
+
+        callerDataSource = callerForm.dataSource(formDataSourceStr(SC_NewProductForm, SC_ExpectedReleasedProduct));
+
+        if (callerDataSource)
+        {
+            callerDataSource.research();
+            callerDataSource.findRecord(rec);
+        }
+
+        if (callerForm.name() == formStr(SC_NewProductForm))
+        {
+            callerForm.openExpectedProductDetails(rec);
+        }
+        else
+        {
+            callerForm.viewOptionHelper().setViewOption(FormViewOption::Details);
+            callerForm.viewEditModeHelper().setViewEditMode(ViewEditMode::Edit);
+        }
+    }
+
+    public boolean closedOk()
+    {
+        return closedOK;
+    }
+
+    public void closeOk()
+    {
+        if (element.validateWrite() && element.write())
+        {
+            closedOK = true;
+            this.postWrite();
+            super();
+        }
+    }
+
+    [Control("ComboBox")]
+    class Identification_ProductSubtype
+    {
+        public boolean modified()
+        {
+            boolean ret;
+
+            ret = super();
+            element.updateProductSubtypeControls();
+
+            return ret;
+        }
+
+    }
+
+}
