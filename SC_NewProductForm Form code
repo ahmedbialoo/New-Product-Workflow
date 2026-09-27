@@ -1,0 +1,211 @@
+[Form]
+public class SC_NewProductForm extends FormRun
+{
+    public void init()
+    {
+        super();
+        this.updateActionButtonStates();
+    }
+
+    public void openExpectedProductDetails(Common _record)
+    {
+        SC_ExpectedReleasedProduct expectedReleasedProduct;
+        FormDataSource               formDataSource;
+
+        expectedReleasedProduct = _record as SC_ExpectedReleasedProduct;
+
+        if (!expectedReleasedProduct || !expectedReleasedProduct.RecId)
+        {
+            return;
+        }
+
+        formDataSource = SC_ExpectedReleasedProduct_DS;
+
+        formDataSource.research();
+
+        if (!formDataSource.findRecord(expectedReleasedProduct))
+        {
+            return;
+        }
+
+        this.viewOptionHelper().setViewOption(FormViewOption::Details);
+        this.viewEditModeHelper().setViewEditMode(ViewEditMode::Edit);
+        this.updateActionButtonStates();
+    }
+
+    /// <summary>
+    /// True when the item exists in InventTable or as an EcoRes product master.
+    /// </summary>
+    public boolean productExistsInInventOrEcoRes(SC_ExpectedReleasedProduct _record)
+    {
+        if (!_record.ItemId)
+        {
+            return false;
+        }
+
+        return SC_ExpectedReleasedProductWorkflowReset::productExistsInReleasedTables(_record);
+    }
+
+    /// <summary>
+    /// Approved and not present in InventTable or EcoResProduct.
+    /// </summary>
+    public boolean canEnableApprovedReleaseActions(SC_ExpectedReleasedProduct _record)
+    {
+        if (!_record.RecId)
+        {
+            return false;
+        }
+
+        if (_record.WorkflowState != SC_WorkflowStatus::Approved)
+        {
+            return false;
+        }
+
+        return !this.productExistsInInventOrEcoRes(_record);
+    }
+
+    /// <summary>
+    /// Unchecks ReleaseStatus when the product is not in InventTable or EcoResProduct.
+    /// </summary>
+    public void syncRecordReleaseStatus()
+    {
+        SC_ExpectedReleasedProduct expectedReleasedProduct;
+
+        expectedReleasedProduct = SC_ExpectedReleasedProduct_DS.cursor();
+
+        if (!expectedReleasedProduct.RecId)
+        {
+            return;
+        }
+
+        SC_ExpectedReleasedProduct::syncReleaseStatusWithErpPresence(expectedReleasedProduct.RecId);
+
+        SC_ExpectedReleasedProduct_DS.reread();
+        SC_ExpectedReleasedProduct_DS.refresh();
+    }
+
+    /// <summary>
+    /// Item number is editable only at the final workflow approval step.
+    /// </summary>
+    public boolean canEditItemId(SC_ExpectedReleasedProduct _record)
+    {
+        return SC_WorkflowValidation::isAtFinalApprovalStage(_record);
+    }
+
+    public void updateItemIdEditState(SC_ExpectedReleasedProduct _record)
+    {
+        boolean           allowEditItemId;
+        FormStringControl itemIdControl;
+
+        allowEditItemId = this.canEditItemId(_record);
+
+        itemIdControl = this.design().controlName(formControlStr(SC_NewProductForm, Identification_ItemId));
+        if (itemIdControl)
+        {
+            itemIdControl.allowEdit(allowEditItemId);
+        }
+
+        itemIdControl = this.design().controlName(formControlStr(SC_NewProductForm, SC_ExpectedReleasedProduct_ItemIdCopy2));
+        if (itemIdControl)
+        {
+            itemIdControl.allowEdit(allowEditItemId);
+        }
+
+        itemIdControl = this.design().controlName(formControlStr(SC_NewProductForm, SC_ExpectedReleasedProduct_ItemIdCopy1Copy1));
+        if (itemIdControl)
+        {
+            itemIdControl.allowEdit(allowEditItemId);
+        }
+    }
+
+    public void updateActionButtonStates()
+    {
+        SC_ExpectedReleasedProduct record;
+        boolean                      enableReleaseActions;
+
+        record = SC_ExpectedReleasedProduct_DS.cursor();
+
+        this.updateDatasourceEditState();
+
+        enableReleaseActions = this.canEnableApprovedReleaseActions(record);
+
+        SC_ButtonReleaseToInvent.enabled(enableReleaseActions && record.ItemId);
+        SC_ButtonResetWorkflow.enabled(enableReleaseActions);
+        SC_ExpectedReleasedProduct_DS.reread();
+        SC_ExpectedReleasedProduct_DS.refresh();
+    }
+
+    public void updateDatasourceEditState()
+    {
+        FormDataSource formDataSource;
+        boolean        allowEdit;
+        boolean        allowDelete;
+
+        allowEdit = !SC_ExpectedReleasedProductWorkflowReset::productExistsInReleasedTables(SC_ExpectedReleasedProduct)
+            && SC_ExpectedReleasedProduct.WorkflowState != SC_WorkflowStatus::Approved;
+        allowDelete = SC_ExpectedReleasedProduct::canDelete(SC_ExpectedReleasedProduct);
+
+        formDataSource = SC_ExpectedReleasedProduct_DS;
+        formDataSource.allowEdit(allowEdit);
+        formDataSource.allowDelete(allowDelete);
+
+        if (!allowEdit)
+        {
+            this.viewEditModeHelper().setViewEditMode(ViewEditMode::View);
+        }
+    }
+
+    [DataSource]
+    class SC_ExpectedReleasedProduct
+    {
+        /// <summary>
+        ///
+        /// </summary>
+        /// <returns></returns>
+        public int active()
+        {
+            int ret;
+
+            ret = super();
+
+            element.syncRecordReleaseStatus();
+            element.updateActionButtonStates();
+            element.updateItemIdEditState(SC_ExpectedReleasedProduct);
+
+            return ret;
+        }
+
+    }
+
+    [Control("Button")]
+    class SC_ButtonNewExpectedProduct
+    {
+        public void clicked()
+        {
+            Args         args = new Args();
+            FormRun      createFormRun;
+            MenuFunction menuFunction;
+
+            super();
+
+            args.caller(element);
+
+            menuFunction = new MenuFunction(menuItemDisplayStr(SC_ExpectedReleasedProductCreate), MenuItemType::Display);
+            createFormRun = menuFunction.create(args) as FormRun;
+
+            createFormRun.init();
+            createFormRun.run();
+            createFormRun.dataSource(1).create();
+            createFormRun.wait();
+
+            if (createFormRun.closedOk())
+            {
+                element.openExpectedProductDetails(element.args().lookupRecord());
+            }
+
+            element.updateActionButtonStates();
+        }
+
+    }
+
+}
