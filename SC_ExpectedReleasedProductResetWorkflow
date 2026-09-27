@@ -1,0 +1,45 @@
+/// <summary>
+
+/// Menu item action that resets workflow status to Draft on an expected released product.
+
+/// </summary>
+
+public class SC_ExpectedReleasedProductResetWorkflow
+
+{
+    public static void main(Args args)
+    {
+        SC_ExpectedReleasedProduct expectedReleasedProduct;
+        FormRun                      callerForm;
+        FormDataSource               formDataSource;
+
+        expectedReleasedProduct = args.record();
+
+        if (!expectedReleasedProduct.RecId)
+        {
+            throw error("Select a saved expected product before resetting workflow status.");
+        }
+
+        SC_ExpectedReleasedProductWorkflowReset::resetWorkflow(expectedReleasedProduct);
+
+        info("Workflow status reset to Draft. The record can be edited and submitted again.");
+
+        callerForm = args.caller() as FormRun;
+
+        if (callerForm)
+        {
+            formDataSource = callerForm.dataSource(formDataSourceStr(SC_NewProductForm, SC_ExpectedReleasedProduct));
+            if (formDataSource)
+            {
+                formDataSource.research(true);
+            }
+            if (callerForm.name() == formStr(SC_NewProductForm))
+            {
+                callerForm.updateActionButtonStates();
+                callerForm.viewEditModeHelper().setViewEditMode(ViewEditMode::Edit);
+            }
+        }
+
+    }
+
+}
